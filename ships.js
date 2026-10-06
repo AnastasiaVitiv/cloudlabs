@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const shipsController = require('../controllers/shipsController');
+const shipsController = require('./shipsController');
 
 router.get('/', (req, res) => {
     const sql = 'SELECT * FROM ships';

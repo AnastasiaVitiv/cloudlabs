@@ -1,9 +1,11 @@
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const mysql = require('mysql2');
+const database = require('./database');
 
 const app = express();
-const PORT = 3005;
+const PORT = process.env.PORT || 3005;
 
 app.use(cors({
     origin: true,
@@ -14,23 +16,35 @@ app.use(cors({
     optionsSuccessStatus: 204
 }));
 
-app.options('*', cors());
 app.use(express.json());
 
-const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: 'Tv09072007',
-    database: 'ship_catalog',
-    port: 3306
+app.use('/images', express.static(path.join(__dirname, 'images')));
+
+app.use(express.static(path.join(__dirname, 'build')));
+
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
 });
 
-db.connect((err) => {
+const db = mysql.createPool({
+    host: process.env.DB_HOST || 'db',             
+    user: process.env.DB_USER || 'ship_user',       
+    password: process.env.DB_PASSWORD || 'ship_password', 
+    database: process.env.DB_NAME || 'ship_catalog',
+    port: process.env.DB_PORT || 3306,
+    charset: 'utf8mb4',                             
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+});
+
+db.getConnection((err, connection) => {
     if (err) {
-        console.error('Error connecting to MySQL:', err.message);
-        return;
+        console.error('Error connecting to MySQL Pool:', err.message);
+    } else {
+        console.log('Successfully connected to MySQL Pool');
+        connection.release();
     }
-    console.log('Connected to MySQL database');
 });
 
 const logButtonClick = (buttonName, additionalData = {}) => {
@@ -225,6 +239,10 @@ app.get('/api/ships/:id', (req, res) => {
 
         res.json(results[0]);
     });
+});
+
+app.get('{*path}', (req, res) => {
+  res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
 app.listen(PORT, () => {

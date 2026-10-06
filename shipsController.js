@@ -1,4 +1,4 @@
-const db = require('../config/database');
+const db = require('./database');
 
 exports.getAllShips = (req, res) => {
     let sql = 'SELECT * FROM ships WHERE 1=1';
