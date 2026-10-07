@@ -1,0 +1,36 @@
+footer {
+    background: #002855;
+    color: white;
+    padding: 30px 50px;
+    text-align: center;
+}
+
+.footer-content {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 30px;
+    margin-bottom: 15px;
+}
+
+.footer-logo-img {
+    height: 50px;
+}
+
+.socials i {
+    color: white;
+    font-size: 20px;
+    margin: 0 8px;
+    transition: color 0.3s;
+}
+
+.socials i:hover {
+    color: #106793;
+}
+
+.copyright {
+    margin-top: 15px;
+    font-size: 14px;
+    color: #ccc;
+}

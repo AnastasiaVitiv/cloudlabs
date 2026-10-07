@@ -1,0 +1,115 @@
+.ship-detail-page {
+    padding: 40px 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.ship-detail-container {
+    display: flex;
+    gap: 50px;
+    align-items: flex-start;
+}
+
+.ship-detail-image {
+    flex: 1;
+}
+
+.ship-detail-image img {
+    width: 100%;
+    border-radius: 20px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.ship-detail-info {
+    flex: 1;
+}
+
+.ship-detail-info h1 {
+    color: #003366;
+    font-size: 3rem;
+    margin-bottom: 30px;
+}
+
+.ship-details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.detail-item {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    font-size: 1.2rem;
+    border-left: 4px solid #004aad;
+}
+
+.detail-item strong {
+    color: #003366;
+}
+
+.ship-description {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+}
+
+.ship-description h3 {
+    color: #003366;
+    margin-bottom: 15px;
+    font-size: 1.5rem;
+}
+
+.ship-description p {
+    color: #555;
+    line-height: 1.6;
+    font-size: 1.1rem;
+}
+
+.ship-detail-buttons {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.ship-detail-buttons a {
+    text-decoration: none;
+    flex: 1;
+    min-width: 200px;
+}
+
+.ship-detail-buttons button {
+    width: 100%;
+}
+
+.not-found {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.not-found h1 {
+    color: #003366;
+    margin-bottom: 30px;
+}
+
+@media (max-width: 768px) {
+    .ship-detail-container {
+        flex-direction: column;
+        gap: 30px;
+    }
+    
+    .ship-details-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .ship-detail-buttons {
+        flex-direction: column;
+    }
+    
+    .ship-detail-buttons a {
+        min-width: 100%;
+    }
+}

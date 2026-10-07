@@ -1,0 +1,10 @@
+.cart-page {
+    padding: 20px;
+    text-align: center;
+    min-height: 400px;
+}
+
+.cart-page h1 {
+    color: #003366;
+    margin-bottom: 20px;
+}
