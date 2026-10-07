@@ -18,3 +18,13 @@ variable "db_password" {
   sensitive   = true
   description = "Пароль до бази даних MySQL"
 }
+
+variable "budget_email" {
+  type        = string
+  description = "Email для AWS Budget notifications"
+}
+
+variable "monthly_budget_usd" {
+  type    = number
+  default = 10
+}

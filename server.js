@@ -1,8 +1,7 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const mysql = require('mysql2');
-const database = require('./database');
+const { db, initializeDatabase } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -22,34 +21,8 @@ app.use('/images', express.static(path.join(__dirname, 'images')));
 
 app.use(express.static(path.join(__dirname, 'build')));
 
-health_check {
-  path                = "/health"
-  healthy_threshold   = 2
-  unhealthy_threshold = 5
-  timeout             = 5
-  interval            = 30
-  matcher             = "200"
-}
-
-const db = mysql.createPool({
-    host: process.env.DB_HOST || 'db',             
-    user: process.env.DB_USER,       
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    port: process.env.DB_PORT || 3306,
-    charset: 'utf8mb4',                             
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-});
-
-db.getConnection((err, connection) => {
-    if (err) {
-        console.error('Error connecting to MySQL Pool:', err.message);
-    } else {
-        console.log('Successfully connected to MySQL Pool');
-        connection.release();
-    }
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
 });
 
 const logButtonClick = (buttonName, additionalData = {}) => {
@@ -246,11 +219,90 @@ app.get('/api/ships/:id', (req, res) => {
     });
 });
 
+app.post('/api/ships', (req, res) => {
+    const {
+        name,
+        tonnage,
+        passengers,
+        captain,
+        speed,
+        mileage,
+        price_per_ton = 0,
+        price_per_person = 0,
+        description = '',
+        image = ''
+    } = req.body;
+
+    if (
+        !name ||
+        tonnage === undefined ||
+        passengers === undefined ||
+        !captain ||
+        speed === undefined ||
+        mileage === undefined
+    ) {
+        return res.status(400).json({
+            error: 'Missing required fields'
+        });
+    }
+
+    const sql = `
+        INSERT INTO ships
+        (
+            name,
+            tonnage,
+            passengers,
+            captain,
+            speed,
+            mileage,
+            price_per_ton,
+            price_per_person,
+            description,
+            image
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const params = [
+        name,
+        tonnage,
+        passengers,
+        captain,
+        speed,
+        mileage,
+        price_per_ton,
+        price_per_person,
+        description,
+        image
+    ];
+
+    db.query(sql, params, (err, result) => {
+        if (err) {
+            console.error('Database insert error:', err);
+            return res.status(500).json({
+                error: 'Database error'
+            });
+        }
+
+        res.status(201).json({
+            message: 'Ship created successfully',
+            id: result.insertId
+        });
+    });
+});
+
 app.get('{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`API available at: http://localhost:${PORT}/api`);
-});
+initializeDatabase()
+    .then(() => {
+        app.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+            console.log(`API available on port ${PORT}/api`);
+        });
+    })
+    .catch((err) => {
+        console.error('Database initialization failed:', err);
+        process.exit(1);
+    });
