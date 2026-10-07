@@ -22,15 +22,20 @@ app.use('/images', express.static(path.join(__dirname, 'images')));
 
 app.use(express.static(path.join(__dirname, 'build')));
 
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
+health_check {
+  path                = "/health"
+  healthy_threshold   = 2
+  unhealthy_threshold = 5
+  timeout             = 5
+  interval            = 30
+  matcher             = "200"
+}
 
 const db = mysql.createPool({
     host: process.env.DB_HOST || 'db',             
-    user: process.env.DB_USER || 'ship_user',       
-    password: process.env.DB_PASSWORD || 'ship_password', 
-    database: process.env.DB_NAME || 'ship_catalog',
+    user: process.env.DB_USER,       
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
     port: process.env.DB_PORT || 3306,
     charset: 'utf8mb4',                             
     waitForConnections: true,

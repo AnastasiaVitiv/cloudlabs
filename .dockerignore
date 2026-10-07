@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+.env
+.env.*
+terraform
+*.tfvars
+*.tfstate
+*.tfstate.*
+build
+README.md
+docs

@@ -9,7 +9,7 @@ resource "aws_db_instance" "mysql" {
   allocated_storage      = 20
   max_allocated_storage  = 20
   engine                 = "mysql"
-  engine_version         = "8.0"
+  engine_version         = "8.4.11"
   instance_class         = "db.t3.micro"
   db_name                = var.db_name
   username               = var.db_user
