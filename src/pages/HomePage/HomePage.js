@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import { shipsApi } from "../../api/shipsApi";
 import ShipList from "../../components/ShipList/ShipList";
 import PrimaryButton from "../../components/PrimaryButton/PrimaryButton";
@@ -30,9 +29,8 @@ function HomePage() {
     
     const logButtonClick = async (endpoint, params = {}) => {
         try {
-            const url = `/api/${endpoint}`;
-            const response = await axios.get(url, { params });
-            console.log(`Button click logged: ${endpoint}`, response.status);
+            await shipsApi.logAction(endpoint, params);
+            console.log(`Button click logged: ${endpoint}`);
         } catch (error) {
             console.error('Error logging button click:', error);
         }

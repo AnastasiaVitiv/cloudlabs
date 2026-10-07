@@ -2,13 +2,12 @@ import React from "react";
 import { Link } from "react-router-dom";
 import PrimaryButton from "../PrimaryButton/PrimaryButton";
 import "./ShipCard.css";
+import { shipsApi } from "../../api/shipsApi";
 
 function ShipCard({ ship }) {
     const logButtonClick = async (endpoint, params = {}) => {
         try {
-            const queryString = new URLSearchParams(params).toString();
-            const url = `http://localhost:3005/api/${endpoint}?${queryString}`;
-            await fetch(url);
+            await shipsApi.logAction(endpoint, params);
             console.log(`Button click logged: ${endpoint}`);
         } catch (error) {
             console.error('Error logging button click:', error);
