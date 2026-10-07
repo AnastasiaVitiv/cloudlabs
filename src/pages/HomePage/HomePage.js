@@ -30,7 +30,7 @@ function HomePage() {
     
     const logButtonClick = async (endpoint, params = {}) => {
         try {
-            const url = `http://localhost:3005/api/${endpoint}`;
+            const url = `/api/${endpoint}`;
             const response = await axios.get(url, { params });
             console.log(`Button click logged: ${endpoint}`, response.status);
         } catch (error) {
