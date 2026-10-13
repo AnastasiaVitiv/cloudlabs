@@ -421,3 +421,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Terraform state files and backups
+terraform/*.tfstate
+terraform/*.tfstate.*
