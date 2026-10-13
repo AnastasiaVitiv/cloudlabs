@@ -7,3 +7,8 @@ output "ecr_repository_url" {
   description = "URL ECR реєстру"
   value       = aws_ecr_repository.app.repository_url
 }
+
+output "github_actions_role_arn" {
+  description = "IAM role ARN for GitHub Actions OIDC deployment"
+  value       = aws_iam_role.github_actions.arn
+}

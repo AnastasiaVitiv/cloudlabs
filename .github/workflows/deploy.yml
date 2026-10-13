@@ -14,7 +14,7 @@ env:
   ECR_REPOSITORY: web1lab-app
   ECS_CLUSTER: web1lab-cluster
   ECS_SERVICE: web1lab-service
-  ECS_TASK_FAMILY: web1lab-app
+  ECS_TASK_FAMILY: web1lab-app-task
 
 jobs:
   deploy:

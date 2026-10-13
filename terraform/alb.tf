@@ -6,6 +6,10 @@ resource "aws_lb" "main" {
   subnets            = [aws_subnet.public_1.id, aws_subnet.public_2.id]
 
   tags = { Name = "web1lab-alb" }
+  depends_on = [
+    aws_route_table_association.public_1,
+    aws_route_table_association.public_2
+  ]
 }
 
 resource "aws_lb_target_group" "app" {

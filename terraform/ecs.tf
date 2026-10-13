@@ -79,5 +79,11 @@ resource "aws_ecs_service" "app" {
     container_port   = 3005
   }
 
-  depends_on = [aws_lb_listener.http]
+  depends_on = [
+    aws_lb_listener.http,
+    aws_iam_role_policy_attachment.ecs_execution,
+    aws_nat_gateway.main,
+    aws_route_table_association.private_1,
+    aws_route_table_association.private_2
+  ]
 }
