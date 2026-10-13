@@ -10,9 +10,12 @@
 *.userosscache
 *.sln.docstates
 *.env
+*.env.*
+*.env.example
 node_modules/
 terraform/.terraform/
 terraform/*.tfstate
+terraform/*.tfstate.*
 terraform/*.tfstate.backup
 terraform/terraform.tfvars
 build/
@@ -425,3 +428,5 @@ FodyWeavers.xsd
 # Terraform state files and backups
 terraform/*.tfstate
 terraform/*.tfstate.*
+
+!.env.example
