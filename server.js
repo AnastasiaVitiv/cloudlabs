@@ -35,7 +35,7 @@ const logButtonClick = (buttonName, additionalData = {}) => {
 
 app.get('/api/test', (req, res) => {
     res.json({
-        message: 'API works correctly!',
+        message: 'API works correctly! - deployment test',
         timestamp: new Date().toISOString(),
         status: 'success'
     });
