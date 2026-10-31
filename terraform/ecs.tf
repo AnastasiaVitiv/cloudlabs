@@ -24,6 +24,25 @@ resource "aws_iam_role_policy_attachment" "ecs_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_iam_role_policy" "ecs_execution_read_db_secret" {
+  name = "web1lab-ecs-read-db-secret"
+  role = aws_iam_role.ecs_execution_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = aws_db_instance.mysql.master_user_secret[0].secret_arn
+      }
+    ]
+  })
+}
+
 resource "aws_ecs_task_definition" "app" {
   family                   = "web1lab-app-task"
   network_mode             = "awsvpc"
@@ -35,7 +54,7 @@ resource "aws_ecs_task_definition" "app" {
   container_definitions = jsonencode([
     {
       name      = "web1lab-app"
-      image = "${aws_ecr_repository.app.repository_url}:bootstrap"
+      image     = "${aws_ecr_repository.app.repository_url}:bootstrap"
       essential = true
       portMappings = [
         {
@@ -46,9 +65,15 @@ resource "aws_ecs_task_definition" "app" {
       environment = [
         { name = "DB_HOST", value = aws_db_instance.mysql.address },
         { name = "DB_USER", value = var.db_user },
-        { name = "DB_PASSWORD", value = var.db_password },
         { name = "DB_NAME", value = var.db_name },
         { name = "PORT", value = "3005" }
+      ]
+
+      secrets = [
+        {
+          name      = "DB_PASSWORD"
+          valueFrom = "${aws_db_instance.mysql.master_user_secret[0].secret_arn}:password::"
+        }
       ]
     }
   ])
@@ -82,6 +107,8 @@ resource "aws_ecs_service" "app" {
   depends_on = [
     aws_lb_listener.http,
     aws_iam_role_policy_attachment.ecs_execution,
+    aws_iam_role_policy.ecs_execution_read_db_secret,
+    aws_secretsmanager_secret_rotation.mysql,
     aws_nat_gateway.main,
     aws_route_table_association.private_1,
     aws_route_table_association.private_2

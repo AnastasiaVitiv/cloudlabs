@@ -13,12 +13,6 @@ variable "db_user" {
   default = "ship_user"
 }
 
-variable "db_password" {
-  type        = string
-  sensitive   = true
-  description = "Пароль до бази даних MySQL"
-}
-
 variable "budget_email" {
   type        = string
   description = "Email для AWS Budget notifications"
