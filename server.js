@@ -6,10 +6,64 @@ const { db, initializeDatabase } = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3005;
 
+const responseCache = new Map();
+const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 45000);
+
+function invalidateShipCache() {
+    responseCache.clear();
+}
+
+function shipReadCache(req, res, next) {
+    if (req.method !== 'GET') {
+        return next();
+    }
+
+    if (req.get('X-Cache-Mode') === 'bypass') {
+        res.set('X-Cache', 'BYPASS');
+        return next();
+    }
+
+    const cacheKey = req.originalUrl;
+    const cached = responseCache.get(cacheKey);
+
+    if (cached && cached.expiresAt > Date.now()) {
+        res.set('X-Cache', 'HIT');
+        return res.status(cached.statusCode).json(cached.body);
+    }
+
+    if (cached) {
+        responseCache.delete(cacheKey);
+    }
+
+    res.set('X-Cache', 'MISS');
+
+    const originalJson = res.json.bind(res);
+
+    res.json = (body) => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+            responseCache.set(cacheKey, {
+                body,
+                statusCode: res.statusCode,
+                expiresAt: Date.now() + CACHE_TTL_MS
+            });
+        }
+
+        return originalJson(body);
+    };
+
+    next();
+}
+
 app.use(cors({
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Requested-With',
+        'X-Cache-Mode'
+    ],
+    exposedHeaders: ['X-Cache'],
     credentials: true,
     preflightContinue: false,
     optionsSuccessStatus: 204
@@ -20,6 +74,8 @@ app.use(express.json());
 app.use('/images', express.static(path.join(__dirname, 'images')));
 
 app.use(express.static(path.join(__dirname, 'build')));
+
+app.use('/api/ships', shipReadCache);
 
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
@@ -283,6 +339,7 @@ app.post('/api/ships', (req, res) => {
                 error: 'Database error'
             });
         }
+        invalidateShipCache();
 
         res.status(201).json({
             message: 'Ship created successfully',
