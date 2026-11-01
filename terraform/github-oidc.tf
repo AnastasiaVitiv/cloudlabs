@@ -93,9 +93,9 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
           "ecs:UpdateService"
         ]
 
-       Resource =[
-	 "*"
-       ]
+        Resource = [
+          "*"
+        ]
       },
       {
         Sid    = "PassEcsExecutionRole"

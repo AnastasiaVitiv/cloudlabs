@@ -1,5 +1,9 @@
 resource "aws_ecs_cluster" "main" {
   name = "web1lab-cluster"
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
 }
 
 resource "aws_iam_role" "ecs_execution_role" {
@@ -88,7 +92,8 @@ resource "aws_ecs_service" "app" {
 
   lifecycle {
     ignore_changes = [
-      task_definition
+      task_definition,
+      desired_count
     ]
   }
 
