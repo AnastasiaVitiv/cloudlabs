@@ -17,7 +17,9 @@ export const options = {
   stages: [
     { duration: '3m', target: VUS },
     { duration: '5m', target: VUS },
-    { duration: '2m', target: 0 },
+    { duration: '2m', target: 1 },
+    { duration: '3m', target: 1 },
+    { duration: '30s', target: 0 },
   ],
 
   summaryTrendStats: [
