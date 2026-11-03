@@ -70,7 +70,9 @@ resource "aws_ecs_task_definition" "app" {
         { name = "DB_HOST", value = aws_db_instance.mysql.address },
         { name = "DB_USER", value = var.db_user },
         { name = "DB_NAME", value = var.db_name },
-        { name = "PORT", value = "3005" }
+        { name = "PORT", value = "3005" },
+        { name = "REDIS_URL", value = "redis://redis.web1lab.local:6379" },
+        { name = "CACHE_TTL_SECONDS", value = "45" }
       ]
 
       secrets = [
@@ -81,6 +83,9 @@ resource "aws_ecs_task_definition" "app" {
       ]
     }
   ])
+  depends_on = [
+    aws_ecs_service.redis
+  ]
 }
 
 resource "aws_ecs_service" "app" {

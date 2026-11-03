@@ -2,18 +2,33 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const { db, initializeDatabase } = require('./database');
+const { createClient } = require('redis');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
 
-const responseCache = new Map();
-const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 45000);
+const redisClient = createClient({
+    url: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
+    socket: {
+        reconnectStrategy: (retries) => Math.min(retries * 500, 5000)
+    }
+});
 
-function invalidateShipCache() {
-    responseCache.clear();
+redisClient.on('error', (error) => {
+    console.error('Redis Client Error:', error);
+});
+
+const CACHE_TTL_SECONDS = Number(
+    process.env.CACHE_TTL_SECONDS || 45
+);
+
+const CACHE_VERSION_KEY = 'ships:cache:version';
+
+async function invalidateShipCache() {
+    await redisClient.incr(CACHE_VERSION_KEY);
 }
 
-function shipReadCache(req, res, next) {
+async function shipReadCache(req, res, next) {
     if (req.method !== 'GET') {
         return next();
     }
@@ -23,37 +38,60 @@ function shipReadCache(req, res, next) {
         return next();
     }
 
-    const cacheKey = req.originalUrl;
-    const cached = responseCache.get(cacheKey);
+    try {
+        let version = await redisClient.get(CACHE_VERSION_KEY);
 
-    if (cached && cached.expiresAt > Date.now()) {
-        res.set('X-Cache', 'HIT');
-        return res.status(cached.statusCode).json(cached.body);
-    }
+        if (version === null) {
+            await redisClient.set(
+                CACHE_VERSION_KEY,
+                '1',
+                { NX: true }
+            );
 
-    if (cached) {
-        responseCache.delete(cacheKey);
-    }
-
-    res.set('X-Cache', 'MISS');
-
-    const originalJson = res.json.bind(res);
-
-    res.json = (body) => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-            responseCache.set(cacheKey, {
-                body,
-                statusCode: res.statusCode,
-                expiresAt: Date.now() + CACHE_TTL_MS
-            });
+            version = await redisClient.get(CACHE_VERSION_KEY) || '1';
         }
 
-        return originalJson(body);
-    };
+        const cacheKey = `ships:${version}:${req.originalUrl}`;
 
-    next();
+        const cached = await redisClient.get(cacheKey);
+
+        if (cached) {
+            const data = JSON.parse(cached);
+
+            res.set('X-Cache', 'HIT');
+
+            return res.status(data.statusCode).json(data.body);
+        }
+
+        res.set('X-Cache', 'MISS');
+
+        const originalJson = res.json.bind(res);
+
+        res.json = (body) => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+                redisClient.setEx(
+                    cacheKey,
+                    CACHE_TTL_SECONDS,
+                    JSON.stringify({
+                        statusCode: res.statusCode,
+                        body
+                    })
+                ).catch((error) => {
+                    console.error('Redis cache write error:', error);
+                });
+            }
+
+            return originalJson(body);
+        };
+
+        return next();
+
+    } catch (error) {
+        console.error('Redis cache error:', error);
+        res.set('X-Cache', 'ERROR');
+        return next();
+    }
 }
-
 app.use(cors({
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -102,18 +140,18 @@ app.get('/api/log/home-view-more', (req, res) => {
         currentShipsCount: req.query.currentCount,
         totalShipsCount: req.query.totalCount
     });
-    res.json({ 
-        status: 'logged', 
-        message: 'View More button click logged successfully' 
+    res.json({
+        status: 'logged',
+        message: 'View More button click logged successfully'
     });
 });
 
 app.get('/api/log/navigation', (req, res) => {
     const page = req.query.page;
     logButtonClick(`Navigation - ${page}`);
-    res.json({ 
-        status: 'logged', 
-        message: `Navigation to ${page} logged successfully` 
+    res.json({
+        status: 'logged',
+        message: `Navigation to ${page} logged successfully`
     });
 });
 
@@ -124,9 +162,9 @@ app.get('/api/log/ship-details', (req, res) => {
         shipId: shipId,
         shipName: shipName
     });
-    res.json({ 
-        status: 'logged', 
-        message: 'Ship details button click logged successfully' 
+    res.json({
+        status: 'logged',
+        message: 'Ship details button click logged successfully'
     });
 });
 
@@ -137,9 +175,9 @@ app.get('/api/log/add-to-cart', (req, res) => {
         shipId: shipId,
         shipName: shipName
     });
-    res.json({ 
-        status: 'logged', 
-        message: 'Add to cart button click logged successfully' 
+    res.json({
+        status: 'logged',
+        message: 'Add to cart button click logged successfully'
     });
 });
 
@@ -148,17 +186,17 @@ app.get('/api/log/back-to-catalog', (req, res) => {
     logButtonClick('Back to Catalog', {
         fromPage: fromPage
     });
-    res.json({ 
-        status: 'logged', 
-        message: 'Back to catalog button click logged successfully' 
+    res.json({
+        status: 'logged',
+        message: 'Back to catalog button click logged successfully'
     });
 });
 
 app.get('/api/log/clear-filters', (req, res) => {
     logButtonClick('Catalog - Clear Filters');
-    res.json({ 
-        status: 'logged', 
-        message: 'Clear filters button click logged successfully' 
+    res.json({
+        status: 'logged',
+        message: 'Clear filters button click logged successfully'
     });
 });
 
@@ -167,16 +205,16 @@ app.get('/api/log/catalog-view-more', (req, res) => {
         currentShipsCount: req.query.currentCount,
         totalShipsCount: req.query.totalCount
     });
-    res.json({ 
-        status: 'logged', 
-        message: 'Catalog View More button click logged successfully' 
+    res.json({
+        status: 'logged',
+        message: 'Catalog View More button click logged successfully'
     });
 });
 
 app.get('/api/ships', (req, res) => {
     console.log('=== SERVER: GET /api/ships ===');
     console.log('SERVER: Query параметри:', req.query);
-    
+
     let sql = 'SELECT * FROM ships WHERE 1=1';
     const params = [];
 
@@ -233,7 +271,7 @@ app.get('/api/ships', (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 6;
     const offset = (page - 1) * limit;
-    
+
     sql += ` LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
@@ -244,12 +282,12 @@ app.get('/api/ships', (req, res) => {
     db.query(sql, params, (err, results) => {
         if (err) {
             console.error('SERVER: Помилка бази даних:', err);
-            return res.status(500).json({ 
+            return res.status(500).json({
                 error: 'Database error',
                 details: err.message
             });
         }
-        
+
         console.log(`SERVER: Повертаємо ${results.length} кораблів`);
         console.log('SERVER: Кораблі:', results.map(ship => ship.name));
         res.json(results);
@@ -332,16 +370,20 @@ app.post('/api/ships', (req, res) => {
         image
     ];
 
-    db.query(sql, params, (err, result) => {
+    db.query(sql, params, async (err, result) => {
         if (err) {
             console.error('Database insert error:', err);
             return res.status(500).json({
                 error: 'Database error'
             });
         }
-        invalidateShipCache();
+        try {
+            await invalidateShipCache();
+        } catch (cacheError) {
+            console.error('Redis cache invalidation error:', cacheError);
+        }
 
-        res.status(201).json({
+        return res.status(201).json({
             message: 'Ship created successfully',
             id: result.insertId
         });
@@ -352,14 +394,24 @@ app.get('{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
-initializeDatabase()
-    .then(() => {
+Promise.all([
+    initializeDatabase(),
+    redisClient.connect()
+])
+    .then(async () => {
+        await redisClient.set(
+            CACHE_VERSION_KEY,
+            '1',
+            { NX: true }
+        );
+
         app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
+            console.log('Redis connected successfully');
             console.log(`API available on port ${PORT}/api`);
         });
     })
     .catch((err) => {
-        console.error('Database initialization failed:', err);
+        console.error('Application initialization failed:', err);
         process.exit(1);
     });

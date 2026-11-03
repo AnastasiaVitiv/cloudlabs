@@ -1,10 +1,11 @@
+
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter } from 'k6/metrics';
 
 const BASE_URL =
   __ENV.BASE_URL ||
-  'http://web1lab-alb-1900727318.eu-central-1.elb.amazonaws.com';
+  'http://web1lab-alb-1181177387.eu-central-1.elb.amazonaws.com';
 
 const VUS = Number(__ENV.VUS || 10);
 const CACHE_MODE = (__ENV.CACHE_MODE || 'enabled').toLowerCase();
@@ -16,9 +17,13 @@ const cacheBypass = new Counter('cache_bypass');
 export const options = {
   stages: [
     { duration: '3m', target: VUS },
+
     { duration: '5m', target: VUS },
+
     { duration: '2m', target: 1 },
+
     { duration: '3m', target: 1 },
+
     { duration: '30s', target: 0 },
   ],
 
@@ -112,6 +117,7 @@ export default function () {
 
   try {
     const body = listResponse.json();
+
     if (Array.isArray(body)) {
       ships = body;
     }
@@ -122,10 +128,10 @@ export default function () {
   for (let i = 0; i < 8; i++) {
     let shipId;
 
-    if (i === 0 && createdShipId) {
+    if (createdShipId) {
       shipId = createdShipId;
     } else if (ships.length > 0) {
-      shipId = ships[i % ships.length].id;
+      shipId = ships[0].id;
     } else {
       shipId = 1;
     }
