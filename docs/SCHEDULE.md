@@ -40,7 +40,7 @@ NAT Gateway $37.44–37.96
 Application Load Balancer $20.02–25.20
 Публічні IPv4-адреси $10.80
 Secrets Manager $0.40
-Cloud Map і DNS $0.60
+Cloud і DNS $0.60
 ECR $0.05–0.50
 CloudWatch $0–5.00
 Додаткова передача даних $0–2.00
