@@ -48,7 +48,7 @@ resource "aws_appautoscaling_policy" "ecs_cpu_utilization" {
 
     target_value       = 50
     scale_out_cooldown = 60
-    scale_in_cooldown  = 180
+    scale_in_cooldown  = 60
   }
   depends_on = [
     aws_appautoscaling_policy.ecs_cpu
