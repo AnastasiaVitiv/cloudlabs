@@ -43,6 +43,9 @@ def get_db_connection():
                     processed_at TIMESTAMPTZ DEFAULT NOW(),
                     CONSTRAINT uq_event_id UNIQUE (event_id)
                 );
+                ALTER TABLE measurements ADD COLUMN IF NOT EXISTS event_id VARCHAR(64);
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_measurements_event_id
+                    ON measurements (event_id);
                 CREATE INDEX IF NOT EXISTS idx_measurements_sensor_time
                     ON measurements (sensor_id, measured_at DESC);
             """)
