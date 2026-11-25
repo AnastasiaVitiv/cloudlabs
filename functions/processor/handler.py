@@ -28,7 +28,7 @@ def get_db_connection():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS measurements (
                     id BIGSERIAL PRIMARY KEY,
-                    event_id VARCHAR(64) NOT NULL,
+                    event_id VARCHAR(64),
                     message_id VARCHAR(64),
                     sensor_id VARCHAR(64) NOT NULL,
                     sensor_type VARCHAR(32) NOT NULL,
@@ -40,8 +40,7 @@ def get_db_connection():
                     lon DOUBLE PRECISION NOT NULL,
                     metadata JSONB,
                     measured_at TIMESTAMPTZ NOT NULL,
-                    processed_at TIMESTAMPTZ DEFAULT NOW(),
-                    CONSTRAINT uq_event_id UNIQUE (event_id)
+                    processed_at TIMESTAMPTZ DEFAULT NOW()
                 );
                 ALTER TABLE measurements ADD COLUMN IF NOT EXISTS event_id VARCHAR(64);
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_measurements_event_id
@@ -95,3 +94,71 @@ def process_measurement(data: dict):
 
     return processed_val, is_anomaly, meta
 
+def save_to_dynamodb(raw_data: dict):
+    item = json.loads(json.dumps(raw_data), parse_float=Decimal)
+    dedup_item = {
+        "sensor_id": f"EVENT#{raw_data['event_id']}",
+        "measured_at": "DEDUP",
+        "event_id": raw_data["event_id"]
+    }
+    dynamodb.meta.client.transact_write_items(
+        TransactItems=[
+            {
+                "Put": {
+                    "TableName": raw_table.name,
+                    "Item": dedup_item,
+                    "ConditionExpression": "attribute_not_exists(sensor_id)"
+                }
+            },
+            {
+                "Put": {
+                    "TableName": raw_table.name,
+                    "Item": item
+                }
+            }
+        ]
+    )
+
+def lambda_handler(event, context):
+    batch_item_failures = []
+    db_conn = get_db_connection()
+
+    for record in event.get("Records", []):
+        msg_id = record["messageId"]
+        try:
+            payload = json.loads(record["body"])
+            event_id = payload.get("event_id") or msg_id
+            payload["event_id"] = event_id
+
+            processed_val, is_anomaly, meta = process_measurement(payload)
+
+            try:
+                save_to_dynamodb(payload)
+            except dynamodb.meta.client.exceptions.TransactionCanceledException:
+                pass
+
+            with db_conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO measurements
+                        (event_id, message_id, sensor_id, sensor_type, raw_value, unit, processed_value, is_anomaly, lat, lon, metadata, measured_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (event_id) DO NOTHING;
+                """, (
+                    event_id,
+                    msg_id,
+                    payload["sensor_id"],
+                    payload["sensor_type"],
+                    float(payload["value"]),
+                    payload["unit"],
+                    processed_val,
+                    is_anomaly,
+                    float(payload["location"]["lat"]),
+                    float(payload["location"]["lon"]),
+                    Json(meta),
+                    payload["measured_at"]
+                ))
+        except Exception as e:
+            print(f"[ERROR] Failed processing message {msg_id}: {e}")
+            batch_item_failures.append({"itemIdentifier": msg_id})
+
+    return {"batchItemFailures": batch_item_failures}
