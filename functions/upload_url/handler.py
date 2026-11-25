@@ -6,7 +6,7 @@ import boto3
 s3 = boto3.client("s3")
 BUCKET_NAME = os.environ["S3_BUCKET"]
 API_KEY = os.environ["API_KEY"]
-MAX_FILE_SIZE_BYTES = 1048576  # 1 МБ
+MAX_FILE_SIZE_BYTES = 1048576
 
 def response(status_code: int, body: dict):
     return {
@@ -25,12 +25,23 @@ def lambda_handler(event, context):
     except json.JSONDecodeError:
         return response(400, {"error": "Invalid JSON body"})
 
-    content_length = body.get("content_length", 0)
-    if not isinstance(content_length, int) or content_length <= 0 or content_length > MAX_FILE_SIZE_BYTES:
-        return response(400, {"error": f"content_length must be between 1 and {MAX_FILE_SIZE_BYTES} bytes (1 MB)"})
+    if not isinstance(body, dict):
+        return response(400, {"error": "JSON body must be an object"})
 
-    sensor_id = body.get("sensor_id", "unknown-cam")
-    object_key = f"snapshots/{sensor_id}/{uuid.uuid4()}.jpg"
+    sensor_id = body.get("sensor_id")
+    if not isinstance(sensor_id, str) or not (1 <= len(sensor_id.strip()) <= 64):
+        return response(400, {"error": "sensor_id must be a non-empty string up to 64 characters"})
+
+    content_length = body.get("content_length", 0)
+    if (
+        isinstance(content_length, bool)
+        or not isinstance(content_length, int)
+        or content_length <= 0
+        or content_length > MAX_FILE_SIZE_BYTES
+    ):
+        return response(400, {"error": f"content_length must be an integer between 1 and {MAX_FILE_SIZE_BYTES} bytes (1 MB)"})
+
+    object_key = f"snapshots/{sensor_id.strip()}/{uuid.uuid4()}.jpg"
 
     presigned_url = s3.generate_presigned_url(
         "put_object",

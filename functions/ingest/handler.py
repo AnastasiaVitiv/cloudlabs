@@ -17,6 +17,9 @@ def response(status_code: int, body: dict):
         "body": json.dumps(body)
     }
 
+def reject_non_standard_json_constants(val):
+    raise ValueError(f"Non-standard JSON constant not allowed: {val}")
+
 def is_valid_finite_number(val) -> bool:
     return isinstance(val, (int, float)) and not isinstance(val, bool) and math.isfinite(val)
 
@@ -29,17 +32,21 @@ def validate_payload(data):
         if field not in data:
             return f"Missing required field: {field}"
 
-    if not isinstance(data["sensor_id"], str) or not data["sensor_id"].strip():
-        return "sensor_id must be a non-empty string"
+    if not isinstance(data["sensor_id"], str) or not (1 <= len(data["sensor_id"].strip()) <= 64):
+        return "sensor_id must be a non-empty string up to 64 characters"
 
-    if not isinstance(data["sensor_type"], str) or data["sensor_type"] not in ALLOWED_TYPES:
-        return f"sensor_type must be a string and one of {sorted(ALLOWED_TYPES)}"
+    if not isinstance(data["sensor_type"], str) or len(data["sensor_type"]) > 32 or data["sensor_type"] not in ALLOWED_TYPES:
+        return f"sensor_type must be a string (max 32 chars) and one of {sorted(ALLOWED_TYPES)}"
+
+    if "event_id" in data and data["event_id"] is not None:
+        if not isinstance(data["event_id"], str) or not (1 <= len(data["event_id"].strip()) <= 64):
+            return "event_id must be a non-empty string up to 64 characters"
 
     if not is_valid_finite_number(data["value"]):
         return "value must be a finite number"
 
-    if not isinstance(data["unit"], str) or not data["unit"].strip():
-        return "unit must be a non-empty string"
+    if not isinstance(data["unit"], str) or not (1 <= len(data["unit"].strip()) <= 16):
+        return "unit must be a non-empty string up to 16 characters"
 
     loc = data["location"]
     if not isinstance(loc, dict) or "lat" not in loc or "lon" not in loc:
@@ -69,15 +76,18 @@ def lambda_handler(event, context):
         return response(401, {"error": "Invalid or missing x-api-key"})
 
     try:
-        body = json.loads(event.get("body") or "{}")
-    except json.JSONDecodeError:
-        return response(400, {"error": "Invalid JSON body"})
+        body = json.loads(
+            event.get("body") or "{}",
+            parse_constant=reject_non_standard_json_constants
+        )
+    except (json.JSONDecodeError, ValueError) as e:
+        return response(400, {"error": f"Invalid JSON body: {e}"})
 
     err = validate_payload(body)
     if err:
         return response(400, {"error": err})
 
-    if not isinstance(body.get("event_id"), str) or not body["event_id"].strip():
+    if not body.get("event_id"):
         body["event_id"] = str(uuid.uuid4())
 
     sqs_resp = sqs.send_message(

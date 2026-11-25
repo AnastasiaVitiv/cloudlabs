@@ -22,36 +22,46 @@ conn = None
 
 def get_db_connection():
     global conn
-    if conn is None or conn.closed != 0:
-        conn = psycopg2.connect(**DB_CONFIG)
-        conn.autocommit = True
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS measurements (
-                    id BIGSERIAL PRIMARY KEY,
-                    event_id VARCHAR(64) NOT NULL,
-                    message_id VARCHAR(64),
-                    sensor_id VARCHAR(64) NOT NULL,
-                    sensor_type VARCHAR(32) NOT NULL,
-                    raw_value DOUBLE PRECISION NOT NULL,
-                    unit VARCHAR(16) NOT NULL,
-                    processed_value DOUBLE PRECISION,
-                    is_anomaly BOOLEAN DEFAULT FALSE,
-                    lat DOUBLE PRECISION NOT NULL,
-                    lon DOUBLE PRECISION NOT NULL,
-                    metadata JSONB,
-                    measured_at TIMESTAMPTZ NOT NULL,
-                    processed_at TIMESTAMPTZ DEFAULT NOW(),
-                    CONSTRAINT uq_event_id UNIQUE (event_id)
-                );
-                ALTER TABLE measurements ADD COLUMN IF NOT EXISTS event_id VARCHAR(64);
-                UPDATE measurements SET event_id = COALESCE(message_id, 'legacy-' || id::text) WHERE event_id IS NULL;
-                ALTER TABLE measurements ALTER COLUMN event_id SET NOT NULL;
-                CREATE UNIQUE INDEX IF NOT EXISTS uq_measurements_event_id
-                    ON measurements (event_id);
-                CREATE INDEX IF NOT EXISTS idx_measurements_sensor_time
-                    ON measurements (sensor_id, measured_at DESC);
-            """)
+    if conn is not None and conn.closed == 0:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1;")
+            return conn
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = None
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS measurements (
+                id BIGSERIAL PRIMARY KEY,
+                event_id VARCHAR(64) NOT NULL,
+                message_id VARCHAR(64),
+                sensor_id VARCHAR(64) NOT NULL,
+                sensor_type VARCHAR(32) NOT NULL,
+                raw_value DOUBLE PRECISION NOT NULL,
+                unit VARCHAR(16) NOT NULL,
+                processed_value DOUBLE PRECISION,
+                is_anomaly BOOLEAN DEFAULT FALSE,
+                lat DOUBLE PRECISION NOT NULL,
+                lon DOUBLE PRECISION NOT NULL,
+                metadata JSONB,
+                measured_at TIMESTAMPTZ NOT NULL,
+                processed_at TIMESTAMPTZ DEFAULT NOW(),
+                CONSTRAINT uq_event_id UNIQUE (event_id)
+            );
+            ALTER TABLE measurements ADD COLUMN IF NOT EXISTS event_id VARCHAR(64);
+            UPDATE measurements SET event_id = COALESCE(message_id, 'legacy-' || id::text) WHERE event_id IS NULL;
+            ALTER TABLE measurements ALTER COLUMN event_id SET NOT NULL;
+            DO $$ BEGIN IF NOT EXISTS ( SELECT 1 FROM pg_constraint WHERE conname = 'uq_event_id' ) THEN ALTER TABLE measurements ADD CONSTRAINT uq_event_id UNIQUE (event_id); END IF; END $$;
+            CREATE INDEX IF NOT EXISTS idx_measurements_sensor_time
+                ON measurements (sensor_id, measured_at DESC);
+        """)
     return conn
 
 def process_measurement(data: dict):
@@ -126,7 +136,6 @@ def save_to_dynamodb(raw_data: dict):
     except ClientError as e:
         if e.response["Error"]["Code"] == "TransactionCanceledException":
             reasons = e.response.get("CancellationReasons", [])
-            # Ігноруємо виключно випадок, коли перший елемент (маркер EVENT#<event_id>) вже існує
             if reasons and reasons[0].get("Code") == "ConditionalCheckFailed":
                 return
         raise

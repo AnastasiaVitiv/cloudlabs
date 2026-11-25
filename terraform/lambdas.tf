@@ -6,7 +6,7 @@ resource "null_resource" "build_processor_pkg" {
     command = <<EOT
       rm -rf /tmp/lambda_processor && mkdir -p /tmp/lambda_processor
       cp ${path.module}/../functions/processor/handler.py /tmp/lambda_processor/
-      docker run --rm -v /tmp/lambda_processor:/out python:3.11-slim pip install --target=/out psycopg2-binary==2.9.9
+      docker run --rm -v /tmp/lambda_processor:/out python:3.11.10-slim-bookworm pip install --target=/out psycopg2-binary==2.9.9
     EOT
   }
 }
@@ -19,7 +19,7 @@ resource "null_resource" "build_history_pkg" {
     command = <<EOT
       rm -rf /tmp/lambda_history && mkdir -p /tmp/lambda_history
       cp ${path.module}/../functions/history/handler.py /tmp/lambda_history/
-      docker run --rm -v /tmp/lambda_history:/out python:3.11-slim pip install --target=/out psycopg2-binary==2.9.9
+      docker run --rm -v /tmp/lambda_history:/out python:3.11.10-slim-bookworm pip install --target=/out psycopg2-binary==2.9.9
     EOT
   }
 }
@@ -54,7 +54,7 @@ resource "aws_lambda_function" "ingest" {
   filename         = data.archive_file.ingest_zip.output_path
   source_code_hash = data.archive_file.ingest_zip.output_base64sha256
   function_name    = "${var.project_name}-ingest"
-  role             = aws_iam_role.lambda_role.arn
+  role             = aws_iam_role.ingest_role.arn
   handler          = "handler.lambda_handler"
   runtime          = "python3.11"
   timeout          = 10
@@ -71,7 +71,7 @@ resource "aws_lambda_function" "processor" {
   filename         = data.archive_file.processor_zip.output_path
   source_code_hash = data.archive_file.processor_zip.output_base64sha256
   function_name    = "${var.project_name}-processor"
-  role             = aws_iam_role.lambda_role.arn
+  role             = aws_iam_role.processor_role.arn
   handler          = "handler.lambda_handler"
   runtime          = "python3.11"
   timeout          = 20
@@ -108,7 +108,7 @@ resource "aws_lambda_function" "history" {
   filename         = data.archive_file.history_zip.output_path
   source_code_hash = data.archive_file.history_zip.output_base64sha256
   function_name    = "${var.project_name}-history"
-  role             = aws_iam_role.lambda_role.arn
+  role             = aws_iam_role.history_role.arn
   handler          = "handler.lambda_handler"
   runtime          = "python3.11"
   timeout          = 15
@@ -136,7 +136,7 @@ resource "aws_lambda_function" "upload_url" {
   filename         = data.archive_file.upload_url_zip.output_path
   source_code_hash = data.archive_file.upload_url_zip.output_base64sha256
   function_name    = "${var.project_name}-upload-url"
-  role             = aws_iam_role.lambda_role.arn
+  role             = aws_iam_role.upload_url_role.arn
   handler          = "handler.lambda_handler"
   runtime          = "python3.11"
   timeout          = 10

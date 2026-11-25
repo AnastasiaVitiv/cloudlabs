@@ -1,31 +1,25 @@
-
-Обробка бінарних даних (Камера та S3)
-Послідовність дій
+Бінарні дані в об'єктному сховищі (S3 + Presigned URLs)
+Послідовність дій (Sequence Diagram)
 sequenceDiagram
-    participant Cam as Емулятор (Камера)
+    participant Cam as Camera Sensor (Emulator)
     participant API as API Gateway + UploadURL Lambda
-    participant S3 as AWS S3 (Private Bucket)
-    participant SQS as Ingest + SQS + Processor
+    participant S3 as Private AWS S3 Bucket
+    participant Ingest as Ingest Lambda + SQS
+    participant Proc as Processor Lambda
     participant DB as PostgreSQL / DynamoDB
-    participant Client as Клієнт історії
 
-    Cam->>API: POST /sensors/upload-url
-    API-->>Cam: {upload_url (PUT, 60s), object_key}
-    Cam->>S3: HTTP PUT image.jpg (напряму)
+    Cam->>API: POST /sensors/upload-url (sensor_id, content_length <= 1MB)
+    API-->>Cam: 200 OK (presigned PUT URL, object_key)
+    Cam->>S3: HTTP PUT image/jpeg (напряму в S3 за Presigned URL)
     S3-->>Cam: 200 OK
-    Cam->>SQS: POST /measurements (s3_key: object_key)
-    SQS->>DB: Збереження запису з s3_key
-    Client->>API: GET /sensors/sensor-cam-01/history
-    API->>DB: Отримання записів
-    API->>S3: Генерація Presigned GET URL (300s)
-    API-->>Client: JSON з тимчасовим image_url
-    
-Чому бінарні дані не передають через чергу і не зберігають у БД?
-Обмеження брокерів повідомлень: AWS SQS має жорсткий ліміт на розмір одного повідомлення — 256 КБ, тоді як знімок з камери сягає 1 МБ.
+    Cam->>Ingest: POST /measurements (sensor_type="camera", s3_key)
+    Ingest-->>Cam: 202 Accepted
+    Ingest->>Proc: SQS Trigger
+    Proc->>DB: Зберігає метадані та s3_key (без бінарного файлу)
+Чому бінарні дані не передають через чергу і не зберігають у базі?
+Обмеження черг повідомлень: AWS SQS має жорсткий ліміт розміру повідомлення (256 КБ), тоді як знімок камери сягає 1 МБ. Кодування у Base64 збільшує обсяг ще на ~33%.
 
-Вартість і продуктивність Compute: Прокачування мегабайтних файлів через Ingest та Processor Lambda збільшує споживання пам'яті та час виконання функцій (оплата за ГБ-секунди).
-
-Деградація бази даних: Зберігання BLOB-об'єктів у PostgreSQL призводить до швидкого роздування дискового простору, уповільнення резервного копіювання та вимивання корисних індексів з оперативної пам'яті (Buffer Cache).
+Деградація продуктивності БД: зберігання великих BLOB-об'єктів у реляційній БД роздуває розмір таблиць, уповільнює резервне копіювання, вимиває кеш оперативної пам'яті (shared_buffers) та коштує значно дорожче за об'єктне сховище S3.
 
 Що таке підписаний URL (Presigned URL)?
-Це тимчасове посилання, криптографічно підписане ключами IAM-ролі за допомогою алгоритму AWS Signature Version 4. Воно делегує клієнту право виконати одну конкретну операцію (PUT для завантаження або GET для перегляду) над одним конкретним об'єктом у приватному S3-бакеті протягом обмеженого часу (60–300 секунд) без розкриття постійних облікових даних AWS.
+Це тимчасове посилання, криптографічно підписане ключами IAM-ролі Lambda (AWS Signature Version 4), яке надає клієнту обмежений у часі доступ (ExpiresIn = 60 секунд для PUT та 300 секунд для GET) до конкретного об'єкта у приватному S3-бакеті без розкриття облікових даних AWS та без відкриття публічного доступу до бакета.

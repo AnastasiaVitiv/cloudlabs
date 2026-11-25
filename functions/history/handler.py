@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -26,9 +26,20 @@ conn = None
 
 def get_db_connection():
     global conn
-    if conn is None or conn.closed != 0:
-        conn = psycopg2.connect(**DB_CONFIG)
-        conn.autocommit = True
+    if conn is not None and conn.closed == 0:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1;")
+            return conn
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = None
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    conn.autocommit = True
     return conn
 
 class CustomEncoder(json.JSONEncoder):
@@ -46,12 +57,16 @@ def response(status_code: int, body: dict):
         "body": json.dumps(body, cls=CustomEncoder)
     }
 
-def validate_iso_timestamp(value: str, param_name: str):
+def parse_utc_timestamp(value: str, param_name: str):
+    if not isinstance(value, str) or not (value.endswith("Z") or value.endswith("+00:00")):
+        return None, f"Query parameter '{param_name}' must be in ISO 8601 UTC format (ending with 'Z' or '+00:00')"
     try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return None
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is None or dt.utcoffset() != timezone.utc.utcoffset(dt):
+            return None, f"Query parameter '{param_name}' must be in UTC timezone"
+        return dt, None
     except Exception:
-        return f"Query parameter '{param_name}' must be a valid ISO 8601 timestamp"
+        return None, f"Query parameter '{param_name}' must be a valid ISO 8601 timestamp"
 
 def attach_presigned_url_if_camera(item: dict):
     if item.get("sensor_type") == "camera":
@@ -91,14 +106,18 @@ def lambda_handler(event, context):
     except ValueError:
         return response(400, {"error": "Query parameter 'limit' must be an integer"})
 
+    from_dt = None
+    to_dt = None
     if from_ts:
-        err = validate_iso_timestamp(from_ts, "from")
+        from_dt, err = parse_utc_timestamp(from_ts, "from")
         if err:
             return response(400, {"error": err})
     if to_ts:
-        err = validate_iso_timestamp(to_ts, "to")
+        to_dt, err = parse_utc_timestamp(to_ts, "to")
         if err:
             return response(400, {"error": err})
+    if from_dt and to_dt and from_dt > to_dt:
+        return response(400, {"error": "Query parameter 'from' must not be later than 'to'"})
 
     if source == "nosql":
         key_cond = Key("sensor_id").eq(sensor_id)
