@@ -1,4 +1,5 @@
 Архітектура конвеєра
+```mermaid
 flowchart LR
     E[IoT Емулятор] -->|1. POST /sensors/upload-url| AG[API Gateway HTTP API]
     AG --> UL[UploadURL Lambda]

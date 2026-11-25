@@ -59,14 +59,15 @@ def response(status_code: int, body: dict):
 
 def parse_utc_timestamp(value: str, param_name: str):
     if not isinstance(value, str) or not (value.endswith("Z") or value.endswith("+00:00")):
-        return None, f"Query parameter '{param_name}' must be in ISO 8601 UTC format (ending with 'Z' or '+00:00')"
+        return None, None, f"Query parameter '{param_name}' must be in ISO 8601 UTC format (ending with 'Z' or '+00:00')"
     try:
         dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if dt.tzinfo is None or dt.utcoffset() != timezone.utc.utcoffset(dt):
-            return None, f"Query parameter '{param_name}' must be in UTC timezone"
-        return dt, None
+            return None, None, f"Query parameter '{param_name}' must be in UTC timezone"
+        canonical = dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        return dt, canonical, None
     except Exception:
-        return None, f"Query parameter '{param_name}' must be a valid ISO 8601 timestamp"
+        return None, None, f"Query parameter '{param_name}' must be a valid ISO 8601 timestamp"
 
 def attach_presigned_url_if_camera(item: dict):
     if item.get("sensor_type") == "camera":
@@ -109,11 +110,11 @@ def lambda_handler(event, context):
     from_dt = None
     to_dt = None
     if from_ts:
-        from_dt, err = parse_utc_timestamp(from_ts, "from")
+        from_dt, from_ts, err = parse_utc_timestamp(from_ts, "from")
         if err:
             return response(400, {"error": err})
     if to_ts:
-        to_dt, err = parse_utc_timestamp(to_ts, "to")
+        to_dt, to_ts, err = parse_utc_timestamp(to_ts, "to")
         if err:
             return response(400, {"error": err})
     if from_dt and to_dt and from_dt > to_dt:

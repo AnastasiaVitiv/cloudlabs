@@ -68,7 +68,7 @@ def sensor_worker(sensor_id: str, sensor_type: str, unit: str, interval_ms: int)
             "value": val,
             "unit": unit,
             "location": LOCATIONS[sensor_id],
-            "measured_at": datetime.now(timezone.utc).isoformat()
+            "measured_at": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
         }
         send_measurement(payload)
         elapsed = time.monotonic() - start
@@ -77,7 +77,7 @@ def sensor_worker(sensor_id: str, sensor_type: str, unit: str, interval_ms: int)
 def generate_dummy_image(sensor_id: str) -> bytes:
     img = Image.new("RGB", (640, 480), color=(random.randint(20, 100), random.randint(50, 150), random.randint(100, 200)))
     draw = ImageDraw.Draw(img)
-    draw.text((20, 20), f"{sensor_id} | {datetime.now(timezone.utc).isoformat()}", fill=(255, 255, 255))
+    draw.text((20, 20), f"{sensor_id} | {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')}", fill=(255, 255, 255))
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=80)
     data = buf.getvalue()
@@ -117,7 +117,7 @@ def camera_worker():
                         "unit": "bytes",
                         "s3_key": data["object_key"],
                         "location": LOCATIONS[sensor_id],
-                        "measured_at": datetime.now(timezone.utc).isoformat()
+                        "measured_at": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
                     }
                     send_measurement(payload)
                     print(f"[CAM OK] Uploaded {data['object_key']} ({len(img_bytes)} bytes)")

@@ -23,6 +23,14 @@ def reject_non_standard_json_constants(val):
 def is_valid_finite_number(val) -> bool:
     return isinstance(val, (int, float)) and not isinstance(val, bool) and math.isfinite(val)
 
+def normalize_utc_timestamp(ts_raw: str) -> str:
+    if not isinstance(ts_raw, str) or not (ts_raw.endswith("Z") or ts_raw.endswith("+00:00")):
+        raise ValueError("measured_at must be in ISO 8601 UTC format (ending with 'Z' or '+00:00')")
+    dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+    if dt.tzinfo is None or dt.utcoffset() != timezone.utc.utcoffset(dt):
+        raise ValueError("measured_at must be in UTC timezone")
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
 def validate_payload(data):
     if not isinstance(data, dict):
         return "JSON body must be an object"
@@ -58,15 +66,10 @@ def validate_payload(data):
     if not (-180.0 <= loc["lon"] <= 180.0):
         return "location.lon must be between -180 and 180"
 
-    ts_raw = data["measured_at"]
-    if not isinstance(ts_raw, str) or not (ts_raw.endswith("Z") or ts_raw.endswith("+00:00")):
-        return "measured_at must be in ISO 8601 UTC format (ending with 'Z' or '+00:00')"
     try:
-        dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
-        if dt.tzinfo is None or dt.utcoffset() != timezone.utc.utcoffset(dt):
-            return "measured_at must be in UTC timezone"
-    except Exception:
-        return "measured_at must be a valid ISO 8601 timestamp"
+        data["measured_at"] = normalize_utc_timestamp(data["measured_at"])
+    except Exception as e:
+        return str(e)
 
     return None
 

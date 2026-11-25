@@ -105,7 +105,7 @@ resource "aws_lambda_event_source_mapping" "sqs_trigger" {
 }
 
 resource "aws_lambda_function" "history" {
-  filename         = data.archive_file.history_zip.output_path
+  filename                       = data.archive_file.history_zip.output_path
   source_code_hash = data.archive_file.history_zip.output_base64sha256
   function_name    = "${var.project_name}-history"
   role             = aws_iam_role.history_role.arn

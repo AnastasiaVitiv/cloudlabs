@@ -97,10 +97,13 @@ def process_measurement(data: dict):
 
     elif s_type == "camera":
         s3_key = data.get("s3_key")
-        if not s3_key:
-            raise ValueError("Camera message missing s3_key")
-        if val > 1048576:
-            raise ValueError(f"Camera image exceeds 1 MB limit: {val} bytes")
+        if not isinstance(s3_key, str) or not s3_key.strip():
+            raise ValueError("Camera message missing valid s3_key")
+        if data.get("unit") != "bytes":
+            raise ValueError(f"Camera unit must be 'bytes', got: {data.get('unit')}")
+        raw_val = data["value"]
+        if isinstance(raw_val, bool) or not isinstance(raw_val, int) or raw_val <= 0 or raw_val > 1048576:
+            raise ValueError(f"Camera image size must be an integer between 1 and 1048576 bytes, got: {raw_val}")
         meta = {"s3_key": s3_key}
 
     else:
