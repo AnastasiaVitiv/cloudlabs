@@ -11,5 +11,5 @@ docker run --rm \
   -e INTERVAL_TEMP_MS=50 \
   -e INTERVAL_HUM_MS=70 \
   -e INTERVAL_LIGHT_MS=90 \
-  -e RUN_DURATION_SEC=180 \
+  -e RUN_DURATION_SEC=300 \
   iot-emulator

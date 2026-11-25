@@ -2,6 +2,7 @@ import os
 import json
 from decimal import Decimal
 import boto3
+from botocore.exceptions import ClientError
 import psycopg2
 from psycopg2.extras import Json
 
@@ -28,7 +29,7 @@ def get_db_connection():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS measurements (
                     id BIGSERIAL PRIMARY KEY,
-                    event_id VARCHAR(64),
+                    event_id VARCHAR(64) NOT NULL,
                     message_id VARCHAR(64),
                     sensor_id VARCHAR(64) NOT NULL,
                     sensor_type VARCHAR(32) NOT NULL,
@@ -40,9 +41,12 @@ def get_db_connection():
                     lon DOUBLE PRECISION NOT NULL,
                     metadata JSONB,
                     measured_at TIMESTAMPTZ NOT NULL,
-                    processed_at TIMESTAMPTZ DEFAULT NOW()
+                    processed_at TIMESTAMPTZ DEFAULT NOW(),
+                    CONSTRAINT uq_event_id UNIQUE (event_id)
                 );
                 ALTER TABLE measurements ADD COLUMN IF NOT EXISTS event_id VARCHAR(64);
+                UPDATE measurements SET event_id = COALESCE(message_id, 'legacy-' || id::text) WHERE event_id IS NULL;
+                ALTER TABLE measurements ALTER COLUMN event_id SET NOT NULL;
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_measurements_event_id
                     ON measurements (event_id);
                 CREATE INDEX IF NOT EXISTS idx_measurements_sensor_time
@@ -101,23 +105,31 @@ def save_to_dynamodb(raw_data: dict):
         "measured_at": "DEDUP",
         "event_id": raw_data["event_id"]
     }
-    dynamodb.meta.client.transact_write_items(
-        TransactItems=[
-            {
-                "Put": {
-                    "TableName": raw_table.name,
-                    "Item": dedup_item,
-                    "ConditionExpression": "attribute_not_exists(sensor_id)"
+    try:
+        dynamodb.meta.client.transact_write_items(
+            TransactItems=[
+                {
+                    "Put": {
+                        "TableName": raw_table.name,
+                        "Item": dedup_item,
+                        "ConditionExpression": "attribute_not_exists(sensor_id)"
+                    }
+                },
+                {
+                    "Put": {
+                        "TableName": raw_table.name,
+                        "Item": item
+                    }
                 }
-            },
-            {
-                "Put": {
-                    "TableName": raw_table.name,
-                    "Item": item
-                }
-            }
-        ]
-    )
+            ]
+        )
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "TransactionCanceledException":
+            reasons = e.response.get("CancellationReasons", [])
+            # Ігноруємо виключно випадок, коли перший елемент (маркер EVENT#<event_id>) вже існує
+            if reasons and reasons[0].get("Code") == "ConditionalCheckFailed":
+                return
+        raise
 
 def lambda_handler(event, context):
     batch_item_failures = []
@@ -131,11 +143,7 @@ def lambda_handler(event, context):
             payload["event_id"] = event_id
 
             processed_val, is_anomaly, meta = process_measurement(payload)
-
-            try:
-                save_to_dynamodb(payload)
-            except dynamodb.meta.client.exceptions.TransactionCanceledException:
-                pass
+            save_to_dynamodb(payload)
 
             with db_conn.cursor() as cur:
                 cur.execute("""

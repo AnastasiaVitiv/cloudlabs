@@ -1,5 +1,6 @@
 import os
 import json
+import math
 import uuid
 from datetime import datetime, timezone
 import boto3
@@ -16,7 +17,13 @@ def response(status_code: int, body: dict):
         "body": json.dumps(body)
     }
 
-def validate_payload(data: dict):
+def is_valid_finite_number(val) -> bool:
+    return isinstance(val, (int, float)) and not isinstance(val, bool) and math.isfinite(val)
+
+def validate_payload(data):
+    if not isinstance(data, dict):
+        return "JSON body must be an object"
+
     required = ["sensor_id", "sensor_type", "value", "unit", "location", "measured_at"]
     for field in required:
         if field not in data:
@@ -25,11 +32,11 @@ def validate_payload(data: dict):
     if not isinstance(data["sensor_id"], str) or not data["sensor_id"].strip():
         return "sensor_id must be a non-empty string"
 
-    if data["sensor_type"] not in ALLOWED_TYPES:
-        return f"sensor_type must be one of {sorted(ALLOWED_TYPES)}"
+    if not isinstance(data["sensor_type"], str) or data["sensor_type"] not in ALLOWED_TYPES:
+        return f"sensor_type must be a string and one of {sorted(ALLOWED_TYPES)}"
 
-    if not isinstance(data["value"], (int, float)) or isinstance(data["value"], bool):
-        return "value must be a number"
+    if not is_valid_finite_number(data["value"]):
+        return "value must be a finite number"
 
     if not isinstance(data["unit"], str) or not data["unit"].strip():
         return "unit must be a non-empty string"
@@ -37,8 +44,12 @@ def validate_payload(data: dict):
     loc = data["location"]
     if not isinstance(loc, dict) or "lat" not in loc or "lon" not in loc:
         return "location must be an object with 'lat' and 'lon'"
-    if not isinstance(loc["lat"], (int, float)) or not isinstance(loc["lon"], (int, float)):
-        return "location.lat and location.lon must be numbers"
+    if not is_valid_finite_number(loc["lat"]) or not is_valid_finite_number(loc["lon"]):
+        return "location.lat and location.lon must be finite numbers (not booleans)"
+    if not (-90.0 <= loc["lat"] <= 90.0):
+        return "location.lat must be between -90 and 90"
+    if not (-180.0 <= loc["lon"] <= 180.0):
+        return "location.lon must be between -180 and 180"
 
     ts_raw = data["measured_at"]
     if not isinstance(ts_raw, str) or not (ts_raw.endswith("Z") or ts_raw.endswith("+00:00")):
@@ -65,13 +76,13 @@ def lambda_handler(event, context):
     err = validate_payload(body)
     if err:
         return response(400, {"error": err})
-    
-    if not body.get("event_id"):
+
+    if not isinstance(body.get("event_id"), str) or not body["event_id"].strip():
         body["event_id"] = str(uuid.uuid4())
 
     sqs_resp = sqs.send_message(
         QueueUrl=QUEUE_URL,
-        MessageBody=json.dumps(body)
+        MessageBody=json.dumps(body, allow_nan=False)
     )
 
     return response(202, {
