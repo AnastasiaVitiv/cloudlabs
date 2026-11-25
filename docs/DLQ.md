@@ -7,7 +7,7 @@
 
 curl -X POST "$API_URL/measurements" \
   -H "Content-Type: application/json" \
-  -H "x-api-key: super-secret-iot-key-2026" \
+  -H "x-api-key: <YOUR_API_KEY>" \
   -d '{
     "sensor_id": "poison-pill",
     "sensor_type": "temperature",

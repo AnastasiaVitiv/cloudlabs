@@ -24,7 +24,7 @@ camera: перевірка наявності s3_key та збереження �
 Забезпечення ідемпотентності
 SQS гарантує доставку at-least-once (можливі дублікати). Ідемпотентність забезпечена на рівні сховищ:
 
-У PostgreSQL створено унікальне обмеження CONSTRAINT uq_sensor_time UNIQUE (sensor_id, measured_at), а вставка виконується через INSERT ... ON CONFLICT (sensor_id, measured_at) DO NOTHING. Повторне повідомлення ігнорується без помилки.
+У PostgreSQL створено унікальне обмеження CONSTRAINT uq_event_id UNIQUE (event_id), а вставка виконується через INSERT ... ON CONFLICT (event_id) DO NOTHING. Повторне повідомлення ігнорується без помилки.
 
 У DynamoDB первинний ключ складається з (sensor_id, measured_at) — повторний PutItem перезаписує ідентичний елемент без створення дубля.
 

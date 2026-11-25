@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS measurements (
     metadata JSONB,
     measured_at TIMESTAMPTZ NOT NULL,
     processed_at TIMESTAMPTZ DEFAULT NOW(),
-    CONSTRAINT uq_sensor_time UNIQUE (sensor_id, measured_at)
+    CONSTRAINT uq_event_id UNIQUE (event_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_measurements_sensor_time
@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_measurements_sensor_time
 Складений індекс (sensor_id, measured_at DESC) дозволяє виконувати фільтрацію за датчиком та сортування у зворотному хронологічному порядку за допомогою швидкого Index Scan без сортування в пам'яті.
 
 Приклад запиту історії та відповіді
-curl -s -H "x-api-key: super-secret-iot-key-2026" \
+curl -s -H "x-api-key: <YOUR_API_KEY>" \
   "$API_URL/sensors/sensor-temp-01/history?from=2026-11-21T00:00:00Z&to=2026-11-22T00:00:00Z&limit=2"
 Відповідь:
 {

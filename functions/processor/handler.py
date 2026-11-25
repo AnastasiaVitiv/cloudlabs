@@ -28,6 +28,7 @@ def get_db_connection():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS measurements (
                     id BIGSERIAL PRIMARY KEY,
+                    event_id VARCHAR(64) NOT NULL,
                     message_id VARCHAR(64),
                     sensor_id VARCHAR(64) NOT NULL,
                     sensor_type VARCHAR(32) NOT NULL,
@@ -40,7 +41,7 @@ def get_db_connection():
                     metadata JSONB,
                     measured_at TIMESTAMPTZ NOT NULL,
                     processed_at TIMESTAMPTZ DEFAULT NOW(),
-                    CONSTRAINT uq_sensor_time UNIQUE (sensor_id, measured_at)
+                    CONSTRAINT uq_event_id UNIQUE (event_id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_measurements_sensor_time
                     ON measurements (sensor_id, measured_at DESC);
@@ -82,6 +83,8 @@ def process_measurement(data: dict):
         s3_key = data.get("s3_key")
         if not s3_key:
             raise ValueError("Camera message missing s3_key")
+        if val > 1048576:
+            raise ValueError(f"Camera image exceeds 1 MB limit: {val} bytes")
         meta = {"s3_key": s3_key}
 
     else:
@@ -91,7 +94,10 @@ def process_measurement(data: dict):
 
 def save_to_dynamodb(raw_data: dict):
     item = json.loads(json.dumps(raw_data), parse_float=Decimal)
-    raw_table.put_item(Item=item)
+    raw_table.put_item(
+        Item=item,
+        ConditionExpression="attribute_not_exists(event_id)"
+    )
 
 def lambda_handler(event, context):
     batch_item_failures = []
@@ -101,17 +107,24 @@ def lambda_handler(event, context):
         msg_id = record["messageId"]
         try:
             payload = json.loads(record["body"])
+            event_id = payload.get("event_id") or msg_id
+            payload["event_id"] = event_id
+
             processed_val, is_anomaly, meta = process_measurement(payload)
 
-            save_to_dynamodb(payload)
+            try:
+                save_to_dynamodb(payload)
+            except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+                pass
 
             with db_conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO measurements
-                        (message_id, sensor_id, sensor_type, raw_value, unit, processed_value, is_anomaly, lat, lon, metadata, measured_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (sensor_id, measured_at) DO NOTHING;
+                        (event_id, message_id, sensor_id, sensor_type, raw_value, unit, processed_value, is_anomaly, lat, lon, metadata, measured_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (event_id) DO NOTHING;
                 """, (
+                    event_id,
                     msg_id,
                     payload["sensor_id"],
                     payload["sensor_type"],

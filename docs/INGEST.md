@@ -14,7 +14,7 @@
 Приклад запиту curl
 curl -i -X POST "$API_URL/measurements" \
   -H "Content-Type: application/json" \
-  -H "x-api-key: super-secret-iot-key-2026" \
+  -H "x-api-key: <YOUR_API_KEY>" \
   -d '{
     "sensor_id": "sensor-temp-01",
     "sensor_type": "temperature",

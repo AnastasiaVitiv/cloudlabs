@@ -1,20 +1,23 @@
 import os
 import io
 import time
+import uuid
 import random
 import threading
 from datetime import datetime, timezone
 import requests
 from PIL import Image, ImageDraw
 
-API_URL = os.getenv("API_URL", "http://localhost:8000").rstrip("/")
-API_KEY = os.getenv("API_KEY", "super-secret-iot-key-2026")
+API_URL = os.environ["API_URL"].rstrip("/")
+API_KEY = os.environ["API_KEY"] 
 
-INTERVAL_TEMP_MS = max(20, int(os.getenv("INTERVAL_TEMP_MS", "50")))
-INTERVAL_HUM_MS = max(20, int(os.getenv("INTERVAL_HUM_MS", "70")))
-INTERVAL_LIGHT_MS = max(20, int(os.getenv("INTERVAL_LIGHT_MS", "90")))
-CAMERA_INTERVAL_SEC = max(10, int(os.getenv("CAMERA_INTERVAL_SEC", "15")))
+INTERVAL_TEMP_MS = min(100, max(20, int(os.getenv("INTERVAL_TEMP_MS", "50"))))
+INTERVAL_HUM_MS = min(100, max(20, int(os.getenv("INTERVAL_HUM_MS", "70"))))
+INTERVAL_LIGHT_MS = min(100, max(20, int(os.getenv("INTERVAL_LIGHT_MS", "90"))))
+
+CAMERA_INTERVAL_SEC = min(30, max(10, int(os.getenv("CAMERA_INTERVAL_SEC", "15"))))
 RUN_DURATION_SEC = int(os.getenv("RUN_DURATION_SEC", "300"))
+MAX_IMAGE_BYTES = 1024 * 1024
 
 STATS = {"sent": 0, "errors": 0}
 LOCK = threading.Lock()
@@ -59,6 +62,7 @@ def sensor_worker(sensor_id: str, sensor_type: str, unit: str, interval_ms: int)
             val = round(random.uniform(50.0, 950.0), 2)
 
         payload = {
+            "event_id": str(uuid.uuid4()),
             "sensor_id": sensor_id,
             "sensor_type": sensor_type,
             "value": val,
@@ -76,36 +80,47 @@ def generate_dummy_image(sensor_id: str) -> bytes:
     draw.text((20, 20), f"{sensor_id} | {datetime.now(timezone.utc).isoformat()}", fill=(255, 255, 255))
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=80)
-    return buf.getvalue()
+    data = buf.getvalue()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError("Generated image exceeds 1 MB limit")
+    return data
 
 def camera_worker():
     sensor_id = "sensor-cam-01"
     headers = {"x-api-key": API_KEY, "Content-Type": "application/json"}
     while not STOP_EVENT.is_set():
         try:
-            r = requests.post(f"{API_URL}/sensors/upload-url", json={"sensor_id": sensor_id}, headers=headers, timeout=5)
+            img_bytes = generate_dummy_image(sensor_id)
+            r = requests.post(
+                f"{API_URL}/sensors/upload-url",
+                json={"sensor_id": sensor_id, "content_length": len(img_bytes)},
+                headers=headers,
+                timeout=5
+            )
             if r.status_code != 200:
                 print(f"[CAM ERR] Failed to get upload URL: {r.status_code} {r.text}")
                 record_result(False)
             else:
                 data = r.json()
-                upload_url = data["upload_url"]
-                object_key = data["object_key"]
-                img_bytes = generate_dummy_image(sensor_id)
-
-                put_resp = requests.put(upload_url, data=img_bytes, headers={"Content-Type": "image/jpeg"}, timeout=10)
+                put_resp = requests.put(
+                    data["upload_url"],
+                    data=img_bytes,
+                    headers={"Content-Type": "image/jpeg"},
+                    timeout=10
+                )
                 if put_resp.status_code in (200, 204):
                     payload = {
+                        "event_id": str(uuid.uuid4()),
                         "sensor_id": sensor_id,
                         "sensor_type": "camera",
                         "value": len(img_bytes),
                         "unit": "bytes",
-                        "s3_key": object_key,
+                        "s3_key": data["object_key"],
                         "location": LOCATIONS[sensor_id],
                         "measured_at": datetime.now(timezone.utc).isoformat()
                     }
                     send_measurement(payload)
-                    print(f"[CAM OK] Uploaded {object_key} ({len(img_bytes)} bytes)")
+                    print(f"[CAM OK] Uploaded {data['object_key']} ({len(img_bytes)} bytes)")
                 else:
                     print(f"[CAM ERR] S3 PUT failed: {put_resp.status_code}")
                     record_result(False)
