@@ -11,6 +11,7 @@
 
 CREATE TABLE IF NOT EXISTS measurements (
     id BIGSERIAL PRIMARY KEY,
+    event_id VARCHAR(64) NOT NULL,
     message_id VARCHAR(64),
     sensor_id VARCHAR(64) NOT NULL,
     sensor_type VARCHAR(32) NOT NULL,

@@ -76,6 +76,11 @@ resource "aws_lambda_function" "processor" {
   runtime          = "python3.11"
   timeout          = 20
 
+  vpc_config {
+    subnet_ids         = data.aws_subnets.default.ids
+    security_group_ids = [aws_security_group.lambda_sg.id]
+  }
+
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.raw_measurements.name
@@ -107,6 +112,11 @@ resource "aws_lambda_function" "history" {
   handler          = "handler.lambda_handler"
   runtime          = "python3.11"
   timeout          = 15
+
+  vpc_config {
+    subnet_ids         = data.aws_subnets.default.ids
+    security_group_ids = [aws_security_group.lambda_sg.id]
+  }
 
   environment {
     variables = {

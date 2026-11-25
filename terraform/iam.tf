@@ -15,7 +15,7 @@ resource "aws_iam_role" "lambda_role" {
 
 resource "aws_iam_role_policy_attachment" "basic_logs" {
   role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
 resource "aws_iam_role_policy" "lambda_permissions" {
@@ -32,7 +32,7 @@ resource "aws_iam_role_policy" "lambda_permissions" {
       },
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:PutItem", "dynamodb:Query"]
+        Action   = ["dynamodb:PutItem", "dynamodb:Query", "dynamodb:TransactWriteItems"]
         Resource = [aws_dynamodb_table.raw_measurements.arn]
       },
       {

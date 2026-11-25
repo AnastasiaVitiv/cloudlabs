@@ -1,5 +1,6 @@
 import os
 import json
+from datetime import datetime
 from decimal import Decimal
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -8,7 +9,7 @@ from psycopg2.extras import RealDictCursor
 
 dynamodb = boto3.resource("dynamodb")
 raw_table = dynamodb.Table(os.environ["DYNAMODB_TABLE"])
-s3_client = boto3.client("s3")
+s3 = boto3.client("s3")
 BUCKET_NAME = os.environ["S3_BUCKET"]
 API_KEY = os.environ["API_KEY"]
 
@@ -34,7 +35,7 @@ class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
             return float(obj)
-        if hasattr(obj, "isoformat"):
+        if isinstance(obj, datetime):
             return obj.isoformat()
         return super().default(obj)
 
@@ -45,20 +46,23 @@ def response(status_code: int, body: dict):
         "body": json.dumps(body, cls=CustomEncoder)
     }
 
-def attach_presigned_url_if_camera(item: dict):
-    s3_key = None
-    if item.get("sensor_type") == "camera":
-        if isinstance(item.get("metadata"), dict):
-            s3_key = item["metadata"].get("s3_key")
-        elif item.get("s3_key"):
-            s3_key = item["s3_key"]
+def validate_iso_timestamp(value: str, param_name: str):
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return None
+    except Exception:
+        return f"Query parameter '{param_name}' must be a valid ISO 8601 timestamp"
 
-    if s3_key:
-        item["image_url"] = s3_client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": BUCKET_NAME, "Key": s3_key},
-            ExpiresIn=300
-        )
+def attach_presigned_url_if_camera(item: dict):
+    if item.get("sensor_type") == "camera":
+        meta = item.get("metadata") or {}
+        s3_key = meta.get("s3_key") or item.get("s3_key")
+        if s3_key:
+            item["image_url"] = s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": BUCKET_NAME, "Key": s3_key},
+                ExpiresIn=300
+            )
     return item
 
 def lambda_handler(event, context):
@@ -69,17 +73,44 @@ def lambda_handler(event, context):
     path_params = event.get("pathParameters") or {}
     sensor_id = path_params.get("sensor_id")
     if not sensor_id:
-        return response(400, {"error": "sensor_id path parameter is required"})
+        return response(400, {"error": "Missing sensor_id in path"})
 
     qs = event.get("queryStringParameters") or {}
-    time_from = qs.get("from", "1970-01-01T00:00:00Z")
-    time_to = qs.get("to", "2099-12-31T23:59:59Z")
-    limit = min(500, max(1, int(qs.get("limit", "20"))))
+    from_ts = qs.get("from")
+    to_ts = qs.get("to")
     source = qs.get("source", "sql").lower()
 
+    if source not in ("sql", "nosql"):
+        return response(400, {"error": "Query parameter 'source' must be 'sql' or 'nosql'"})
+
+    try:
+        limit_raw = int(qs.get("limit", "20"))
+        if limit_raw < 1 or limit_raw > 500:
+            return response(400, {"error": "Query parameter 'limit' must be between 1 and 500"})
+        limit = limit_raw
+    except ValueError:
+        return response(400, {"error": "Query parameter 'limit' must be an integer"})
+
+    if from_ts:
+        err = validate_iso_timestamp(from_ts, "from")
+        if err:
+            return response(400, {"error": err})
+    if to_ts:
+        err = validate_iso_timestamp(to_ts, "to")
+        if err:
+            return response(400, {"error": err})
+
     if source == "nosql":
+        key_cond = Key("sensor_id").eq(sensor_id)
+        if from_ts and to_ts:
+            key_cond = key_cond & Key("measured_at").between(from_ts, to_ts)
+        elif from_ts:
+            key_cond = key_cond & Key("measured_at").gte(from_ts)
+        elif to_ts:
+            key_cond = key_cond & Key("measured_at").lte(to_ts)
+
         res = raw_table.query(
-            KeyConditionExpression=Key("sensor_id").eq(sensor_id) & Key("measured_at").between(time_from, time_to),
+            KeyConditionExpression=key_cond,
             ScanIndexForward=False,
             Limit=limit
         )
@@ -87,15 +118,26 @@ def lambda_handler(event, context):
         return response(200, {"source": "dynamodb", "sensor_id": sensor_id, "count": len(items), "items": items})
 
     db_conn = get_db_connection()
+    query = """
+        SELECT event_id, sensor_id, sensor_type, raw_value, unit, processed_value,
+               is_anomaly, lat, lon, metadata, measured_at
+        FROM measurements
+        WHERE sensor_id = %s
+    """
+    params = [sensor_id]
+
+    if from_ts:
+        query += " AND measured_at >= %s"
+        params.append(from_ts)
+    if to_ts:
+        query += " AND measured_at <= %s"
+        params.append(to_ts)
+
+    query += " ORDER BY measured_at DESC LIMIT %s"
+    params.append(limit)
+
     with db_conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute("""
-            SELECT sensor_id, sensor_type, raw_value, unit, processed_value,
-                   is_anomaly, lat, lon, metadata, measured_at
-            FROM measurements
-            WHERE sensor_id = %s AND measured_at >= %s AND measured_at <= %s
-            ORDER BY measured_at DESC
-            LIMIT %s;
-        """, (sensor_id, time_from, time_to, limit))
+        cur.execute(query, tuple(params))
         rows = [attach_presigned_url_if_camera(dict(r)) for r in cur.fetchall()]
 
     return response(200, {"source": "postgresql", "sensor_id": sensor_id, "count": len(rows), "items": rows})
