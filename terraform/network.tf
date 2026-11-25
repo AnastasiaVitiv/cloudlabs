@@ -28,7 +28,7 @@ resource "aws_security_group" "lambda_sg" {
 
 resource "aws_security_group" "rds_sg" {
   name        = "${var.project_name}-rds-sg"
-  description = "Allow PostgreSQL access ONLY from IoT Lambda Security Group"
+  description = "Allow PostgreSQL access for Lambda"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
